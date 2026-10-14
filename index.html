@@ -1,0 +1,51 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>出退勤（テスト）</title>
+<style>
+body{font-family:sans-serif;margin:0;padding:16px;background:#f5f7fa;max-width:480px;margin:auto}
+h1{font-size:20px}select,textarea{width:100%;font-size:18px;padding:10px;box-sizing:border-box}
+.btns{display:flex;gap:12px;margin:16px 0}button{flex:1;font-size:26px;padding:28px 0;border:0;border-radius:14px;color:#fff}
+#in{background:#2e8b57}#out{background:#d2691e}button:disabled{opacity:.4}
+#msg{font-size:20px;font-weight:bold;min-height:1.5em;text-align:center}
+table{width:100%;border-collapse:collapse;background:#fff}td,th{border-bottom:1px solid #ddd;padding:6px;font-size:15px}
+</style></head><body>
+<h1>出退勤（テスト版）</h1>
+<label>名前</label><select id="staff"><option value="">選んでください</option></select>
+<div class="btns"><button id="in">出勤</button><button id="out">退勤</button></div>
+<textarea id="note" rows="2" placeholder="備考（任意）"></textarea>
+<div id="msg"></div>
+<h2 style="font-size:17px">今日の記録</h2>
+<table><thead><tr><th>時刻</th><th>名前</th><th>事業所</th><th>種別</th></tr></thead><tbody id="list"></tbody></table>
+<script>
+// ▼ここを置き換え：Supabaseの公開鍵（publishable, sb_publishable_...）
+const URL_='https://zvrardoyxocmqhvyddnf.supabase.co';
+const KEY='sb_publishable_C3S0K18If_cNj6gpgIct9w_3NFMdnCT';
+const H={apikey:KEY,'Content-Type':'application/json'};
+let staff=[];
+const $=id=>document.getElementById(id);
+const t=d=>new Date(d).toLocaleTimeString('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'});
+async function load(){
+  const r=await fetch(URL_+'/rest/v1/staff?select=id,name,office&order=office,name',{headers:H});
+  staff=await r.json();
+  $('staff').innerHTML='<option value="">選んでください</option>'+staff.map(s=>`<option value="${s.id}">${s.name}（${s.office}）</option>`).join('');
+  const last=localStorage.getItem('staff'); if(last)$('staff').value=last;
+  list();
+}
+async function list(){
+  const r=await fetch(URL_+'/rest/v1/attendance?select=at,kind,office,staff(name)&order=at.desc',{headers:H});
+  const rows=await r.json();
+  $('list').innerHTML=rows.map(x=>`<tr><td>${t(x.at)}</td><td>${x.staff?.name||''}</td><td>${x.office}</td><td>${x.kind}</td></tr>`).join('')||'<tr><td colspan=4>まだありません</td></tr>';
+}
+async function rec(kind){
+  const id=+$('staff').value; if(!id){$('msg').textContent='名前を選んでください';return}
+  const s=staff.find(x=>x.id===id); localStorage.setItem('staff',id);
+  $('in').disabled=$('out').disabled=true;
+  const r=await fetch(URL_+'/rest/v1/attendance',{method:'POST',headers:{...H,Prefer:'return=minimal'},
+    body:JSON.stringify({staff_id:id,office:s.office,kind,note:$('note').value||null})});
+  $('in').disabled=$('out').disabled=false;
+  if(r.ok){$('msg').textContent=`${s.name} ${kind} ${t(new Date())} 記録しました ✓`;$('note').value='';list()}
+  else $('msg').textContent='エラー：'+(await r.text());
+}
+$('in').onclick=()=>rec('出勤');$('out').onclick=()=>rec('退勤');
+load();
+</script></body></html>
